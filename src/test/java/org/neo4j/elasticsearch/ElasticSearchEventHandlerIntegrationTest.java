@@ -14,7 +14,6 @@ import org.junit.Test;
 import org.neo4j.graphdb.DynamicLabel;
 import org.neo4j.graphdb.GraphDatabaseService;
 import org.neo4j.graphdb.Transaction;
-import org.neo4j.graphdb.RelationshipType;
 import org.neo4j.kernel.impl.util.TestLogger;
 import org.neo4j.test.TestGraphDatabaseFactory;
 
@@ -27,9 +26,9 @@ import static org.neo4j.helpers.collection.MapUtil.stringMap;
 
 public class ElasticSearchEventHandlerIntegrationTest {
 
-    public static final String LABEL = "dmetrics";
-    public static final String INDEX = "test_index";
-    public static final String INDEX_SPEC = INDEX + ":" + LABEL + "(name)";
+    public static final String LABEL = "MyLabel";
+    public static final String INDEX = "my_index";
+    public static final String INDEX_SPEC = INDEX + ":" + LABEL + "(foo)";
     private GraphDatabaseService db;
     private JestClient client;
 
@@ -55,10 +54,6 @@ public class ElasticSearchEventHandlerIntegrationTest {
                 "elasticsearch.index_spec", INDEX_SPEC);
     }
 
-    private static enum RelTypes implements RelationshipType {
-        KNOWS
-    }
-
     @After
     public void tearDown() throws Exception {
         client.execute(new DeleteIndex.Builder(INDEX).build());
@@ -69,54 +64,25 @@ public class ElasticSearchEventHandlerIntegrationTest {
     @Test
     public void testAfterCommit() throws Exception {
         Transaction tx = db.beginTx();
-        org.neo4j.graphdb.Node node1 = db.createNode(DynamicLabel.label(LABEL));
-        org.neo4j.graphdb.Node node2 = db.createNode(DynamicLabel.label(LABEL));
-        org.neo4j.graphdb.Relationship relationship;
-        String id1 = String.valueOf(node1.getId());
-        String id2 = String.valueOf(node2.getId());
-        node1.setProperty("name", "paul");
-        node2.setProperty("name", "sanghee");
-        relationship = node1.createRelationshipTo(node2, RelTypes.KNOWS);
-        relationship.setProperty("where", "dmetrics");
-        String relationship_id = String.valueOf(relationship.getId());
-        System.out.println("rel" + relationship_id);
+        org.neo4j.graphdb.Node node = db.createNode(DynamicLabel.label(LABEL));
+        String id = String.valueOf(node.getId());
+        node.setProperty("foo", "foobar");
         tx.success();
         tx.close();
         
         Thread.sleep(1000); // wait for the async elasticsearch query to complete
 
-        JestResult response1 = client.execute(new Get.Builder(INDEX, id1).build());
-        JestResult response2 = client.execute(new Get.Builder(INDEX, id2).build());
-        JestResult response3 = client.execute(new Get.Builder("relationships", relationship_id).build());
+        JestResult response = client.execute(new Get.Builder(INDEX, id).build());
 
-        assertEquals(true, response1.isSucceeded());
-        assertEquals(INDEX, response1.getValue("_index"));
-        assertEquals(id1, response1.getValue("_id"));
-        assertEquals(LABEL, response1.getValue("_type"));
+        assertEquals(true, response.isSucceeded());
+        assertEquals(INDEX, response.getValue("_index"));
+        assertEquals(id, response.getValue("_id"));
+        assertEquals(LABEL, response.getValue("_type"));
 
-        assertEquals(true, response2.isSucceeded());
-        assertEquals(INDEX, response2.getValue("_index"));
-        assertEquals(id2, response2.getValue("_id"));
-        assertEquals(LABEL, response2.getValue("_type"));
 
-        assertEquals(true, response3.isSucceeded());
-        assertEquals("relationships", response3.getValue("_index"));
-        assertEquals(relationship_id, response3.getValue("_id"));
-        assertEquals("relationship", response3.getValue("_type"));
-
-        Map source1 = response1.getSourceAsObject(Map.class);
-        assertEquals(asList(LABEL), source1.get("labels"));
-        assertEquals(id1, source1.get("id"));
-        assertEquals("paul", source1.get("name"));
-
-        Map source2 = response2.getSourceAsObject(Map.class);
-        assertEquals(asList(LABEL), source2.get("labels"));
-        assertEquals(id2, source2.get("id"));
-        assertEquals("sanghee", source2.get("name"));
-
-        Map source3 = response3.getSourceAsObject(Map.class);
-        assertEquals("relationship", source3.get("labels"));
-        assertEquals(relationship_id, source3.get("id"));
-        assertEquals("dmetrics", source3.get("where"));
+        Map source = response.getSourceAsObject(Map.class);
+        assertEquals(asList(LABEL), source.get("labels"));
+        assertEquals(id, source.get("id"));
+        assertEquals("foobar", source.get("foo"));
     }
 }

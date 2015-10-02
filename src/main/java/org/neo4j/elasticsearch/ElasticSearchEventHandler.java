@@ -47,7 +47,6 @@ class ElasticSearchEventHandler implements TransactionEventHandler<Collection<Bu
         //List<BulkableAction> actions = new ArrayList<>(1000);
         Map<IndexId, BulkableAction> actions = new HashMap<>(1000);
         for (Node node : transactionData.createdNodes()) {
-            System.out.println(node.getProperty("name"));
             if (hasLabel(node)) actions.putAll(indexRequests(node));
         }
         for (Node node : transactionData.deletedNodes()) {
@@ -69,9 +68,9 @@ class ElasticSearchEventHandler implements TransactionEventHandler<Collection<Bu
         }
 
         for (Relationship relationship : transactionData.createdRelationships()) {
-            System.out.println(relationship.getProperty("where"));
             actions.putAll(indexRequests(relationship));
         }
+
         return actions.isEmpty() ? Collections.<BulkableAction>emptyList() : actions.values();
     }
 
