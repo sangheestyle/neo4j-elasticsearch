@@ -16,9 +16,6 @@ import org.neo4j.graphdb.event.TransactionData;
 import org.neo4j.graphdb.event.TransactionEventHandler;
 import org.neo4j.kernel.impl.util.StringLogger;
 
-
-
-
 import java.util.*;
 
 
@@ -114,10 +111,19 @@ class ElasticSearchEventHandler implements TransactionEventHandler<Collection<Bu
             for (ElasticSearchIndexSpec spec: indexSpecs.get(l)) {
                 String id = id(node), indexName = spec.getIndexName();
                 reqs.put(new IndexId(indexName, id), new Index.Builder(nodeToJson(node, spec.getProperties()))
-                .type(l.name())
-                .index(indexName)
-                .id(id)
-                .build());
+                        .type(l.name())
+                        .index(indexName)
+                        .id(id)
+                        .build());
+            }
+
+            for (ElasticSearchIndexSpec spec: indexSpecs.get(l)) {
+                String id = id(node), indexName = spec.getIndexName();
+                reqs.put(new IndexId(indexName, id), new Index.Builder(pathToJson(node))
+                        .type(l.name())
+                        .index(indexName)
+                        .id(id)
+                        .build());
             }
         }
         return reqs;
@@ -185,6 +191,51 @@ class ElasticSearchEventHandler implements TransactionEventHandler<Collection<Bu
             Object value = node.getProperty(prop);
             json.put(prop, value);
         }
+        return json;
+    }
+
+    public class DefaultDict<K, V> extends HashMap<K, V> {
+
+        Class<V> klass;
+        public DefaultDict(Class klass) {
+            this.klass = klass;
+        }
+
+        @Override
+        public V get(Object key) {
+            V returnValue = super.get(key);
+            if (returnValue == null) {
+                try {
+                    returnValue = klass.newInstance();
+                } catch (Exception e) {
+                    throw new RuntimeException(e);
+                }
+                this.put((K) key, returnValue);
+            }
+            return returnValue;
+        }
+    }
+
+    private Map pathToJson(Node node) {
+        DefaultDict<String, List<String>> properties =
+                new DefaultDict<String, List<String>>(ArrayList.class);
+        String firstLabelOfEndNode;
+        try (Transaction tx = gds.beginTx()) {
+            Iterable<Relationship> allRelationships = node.getRelationships();
+            for(Relationship r : allRelationships) {
+                firstLabelOfEndNode = r.getEndNode().getLabels().iterator().next().toString().toLowerCase();
+                properties.get(firstLabelOfEndNode).add((String) r.getEndNode().getProperty("name"));
+            }
+            tx.success();
+        }
+        Map<String,Object> basicProperties = new LinkedHashMap<>();
+        basicProperties.put("id", id(node));
+        basicProperties.put("labels", labels(node));
+        basicProperties.put("name", node.getProperty("name"));
+        HashMap json = new HashMap();
+        json.putAll(basicProperties);
+        json.putAll(properties);
+        System.out.println(json);
         return json;
     }
     
